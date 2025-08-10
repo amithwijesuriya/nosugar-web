@@ -1,0 +1,1 @@
+export function Input({className="",...props}:any){return <input className={`w-full px-3 py-2 rounded-xl border text-sm ${className}`} {...props} />}

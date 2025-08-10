@@ -1,0 +1,1 @@
+export function Card({className="",children}:any){return <div className={`rounded-2xl border bg-white ${className}`}>{children}</div>} export function CardContent({className="",children}:any){return <div className={className}>{children}</div>}
