@@ -9,15 +9,19 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "lucide-react": "^0.453.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "lucide-react": "^0.453.0",
     "recharts": "^2.10.3"
   },
   "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.11",
     "@types/react": "^18.2.56",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^4.2.0",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^4.1.11",
     "typescript": "^5.5.4",
     "vite": "^5.4.0"
   }
