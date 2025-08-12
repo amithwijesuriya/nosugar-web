@@ -4,13 +4,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AlertCircle, Banknote, FileText, FlameKindling, Link as LinkIcon, Plus, ShoppingCart, Watch, LineChart as LineChartIcon, Info, SlidersHorizontal, Shield, Sparkles } from "lucide-react";
+import { AlertCircle, Banknote, FileText, FlameKindling, Link as LinkIcon, Plus, ShoppingCart, Watch, LineChart as LineChartIcon, Info, SlidersHorizontal, Shield } from "lucide-react";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ReferenceLine, ResponsiveContainer, Cell,
 } from "recharts";
 
 // ——————————————————————————————————————————————
-// nosugar — MVP (Admin Mode + Onboarding UI + activity bonus + unit controls)
+// nosugar — MVP (Admin Mode + Onboarding UI + activity bonus)
 // DISCLAIMER: Educational demo only. Not medical advice.
 // ——————————————————————————————————————————————
 
@@ -27,11 +27,6 @@ type Onboarding = {
   onboarded?: boolean;
 };
 
-type Units = {
-  sugar: "g" | "oz";
-  height: "cm" | "ftin";
-};
-
 type LogEntry = { id: string; ts: number; item: string; sugarG: number; context?: string };
 type Connections = { uberEats: boolean; banking: boolean; appleHealth: boolean };
 
@@ -46,7 +41,6 @@ type Settings = {
 };
 
 const STORAGE_KEY = "nosugar_mvp_state_v3";
-const G_PER_OUNCE = 28.3495;
 
 // ---------------------- tiny utils ----------------------
 function loadState<T>(key: string, fallback: T): T {
@@ -59,33 +53,6 @@ function clamp(n: number, lo: number, hi: number){ return Math.max(lo, Math.min(
 function round2(n: number){ return Math.round(n*100)/100 }
 function startOfDay(d=new Date()){ const t=new Date(d); t.setHours(0,0,0,0); return t }
 function addDays(d:Date, days:number){ const t=new Date(d); t.setDate(t.getDate()+days); return t }
-
-// formatting helpers for sugar
-function toUnit(valueG: number, unit: Units["sugar"]): number {
-  return unit === "g" ? valueG : valueG / G_PER_OUNCE;
-}
-function fmtSugar(valueG: number, unit: Units["sugar"]): string {
-  const v = toUnit(valueG, unit);
-  // 0 decimals for grams, 2 for oz
-  return unit === "g" ? `${Math.round(v)} g` : `${(Math.round(v * 100) / 100).toFixed(2)} oz`;
-}
-function parseSugarInput(s: string, unit: Units["sugar"]): number {
-  const n = parseFloat(String(s).replace(/[^0-9.]/g, ""));
-  if (isNaN(n) || n <= 0) return 0;
-  return unit === "g" ? Math.round(n) : Math.round(n * G_PER_OUNCE);
-}
-
-// height helpers
-function cmToFtIn(cm: number): { ft: number; inch: number } {
-  const totalIn = cm / 2.54;
-  const ft = Math.floor(totalIn / 12);
-  const inch = Math.round(totalIn - ft * 12);
-  return { ft, inch };
-}
-function ftInToCm(ft: number, inch: number): number {
-  const totalIn = (ft * 12) + inch;
-  return Math.round(totalIn * 2.54);
-}
 
 // ---------------------- model (same as before) ----------------------
 function bmiOf(heightCm: number, weightKg: number){ const h=cmToMeters(heightCm); return weightKg/(h*h) }
@@ -174,17 +141,14 @@ function SectionTitle({ icon:Icon, title, subtitle }:{icon:any; title:string; su
     </div>
   );
 }
-
-// New: light-blue consumed bar
-function ConsumedBar({ value, max }:{ value:number; max:number }){
+function ProgressBar({ value, max }:{ value:number; max:number }){
   const pct = Math.min(100, Math.round((value / max) * 100));
   return (
-    <div className="w-full h-3.5 bg-sky-100 rounded-full overflow-hidden ring-1 ring-sky-200">
-      <div className="h-full bg-gradient-to-r from-sky-400 to-sky-500" style={{ width: `${pct}%` }} />
+    <div className="w-full h-3 bg-muted rounded-full overflow-hidden">
+      <div className={`h-full ${pct < 80 ? "bg-green-500" : pct < 100 ? "bg-yellow-500" : "bg-red-500"}`} style={{ width: `${pct}%` }} />
     </div>
   );
 }
-
 function NumberField({ label, value, onChange }:{ label:string; value:number; onChange:(v:number)=>void }){
   return (
     <label className="flex flex-col gap-1">
@@ -198,10 +162,6 @@ export default function App(){
   // Admin mode toggle (hidden by default)
   const [admin, setAdmin] = useState<boolean>(()=>loadState(STORAGE_KEY+":admin", false));
   useEffect(()=>saveState(STORAGE_KEY+":admin", admin),[admin]);
-
-  // Units
-  const [units, setUnits] = useState<Units>(()=>loadState(STORAGE_KEY+":units", { sugar: "g", height: "cm" }));
-  useEffect(()=>saveState(STORAGE_KEY+":units", units), [units]);
 
   // Settings (persisted)
   const [settings, setSettings] = useState<Settings>(()=>loadState(STORAGE_KEY+":settings",{
@@ -259,15 +219,14 @@ export default function App(){
   const todayEnd = new Date(); todayEnd.setHours(23,59,59,999);
   const todaySugar = logs.filter(l => l.ts >= todayStart.getTime() && l.ts <= todayEnd.getTime())
                          .reduce((a, b) => a + b.sugarG, 0);
-  const overToday = Math.max(0, todaySugar - dailyLimit);
 
   // Logging UI
   const [newItem, setNewItem] = useState("");
   const [newSugar, setNewSugar] = useState("");
   const addLog = () => {
-    const grams = parseSugarInput(newSugar, units.sugar);
+    const grams = parseSugar(newSugar);
     if (!newItem || grams <= 0) return;
-    setLogs([{ id: uid(), ts: Date.now(), item: newItem, sugarG: grams, context: `Manual (${units.sugar})` }, ...logs]);
+    setLogs([{ id: uid(), ts: Date.now(), item: newItem, sugarG: grams, context: "Manual" }, ...logs]);
     setNewItem(""); setNewSugar("");
   };
   const removeLog = (id: string) => setLogs(logs.filter(l => l.id !== id));
@@ -292,9 +251,6 @@ export default function App(){
   // Auto-onboarding prompt (show once until completed)
   const [showOnboarding, setShowOnboarding] = useState<boolean>(!onboarding.onboarded);
 
-  // Derived height ft/in for display when needed
-  const { ft: heightFt, inch: heightIn } = cmToFtIn(onboarding.heightCm);
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white text-slate-900 p-6">
       <div className="max-w-6xl mx-auto grid gap-6">
@@ -308,15 +264,6 @@ export default function App(){
             </div>
           </div>
           <div className="flex items-center gap-2">
-            {/* Units quick-toggle for sugar */}
-            <Select value={units.sugar} onValueChange={(v:any)=>setUnits({...units, sugar:v})}>
-              <SelectTrigger className="w-[110px]"><SelectValue placeholder="Units" /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="g">Sugar: g</SelectItem>
-                <SelectItem value="oz">Sugar: oz</SelectItem>
-              </SelectContent>
-            </Select>
-
             {/* Admin toggle */}
             <Button variant={admin ? "default":"outline"} onClick={()=>setAdmin(!admin)} className="flex items-center gap-2">
               <Shield className="w-4 h-4" /> {admin ? "Admin: ON" : "Admin: OFF"}
@@ -336,14 +283,7 @@ export default function App(){
               <div className="text-sm space-y-1 text-muted-foreground">
                 <div><span className="font-medium text-slate-900">{onboarding.name || "Guest"}</span></div>
                 <div>Age {onboarding.age} • {onboarding.sex}</div>
-                <div>
-                  {units.height === "cm" ? (
-                    <span>{onboarding.heightCm} cm</span>
-                  ) : (
-                    <span>{heightFt} ft {heightIn} in</span>
-                  )}
-                  {" "}• {onboarding.weightKg} kg • {onboarding.activity} activity
-                </div>
+                <div>{onboarding.heightCm} cm • {onboarding.weightKg} kg • {onboarding.activity} activity</div>
                 {onboarding.ethnicity && <div>Ethnicity: {onboarding.ethnicity}</div>}
               </div>
               <div className="mt-3 text-xs text-muted-foreground flex gap-2 items-start">
@@ -355,41 +295,21 @@ export default function App(){
 
           <Card className="md:col-span-2 shadow-sm">
             <CardContent className="p-5">
-              <SectionTitle icon={FlameKindling} title="Max Sugar Limit" subtitle="Personalized daily added sugar limit" />
+              <SectionTitle icon={FlameKindling} title="Today’s Budget" subtitle="Personalized daily added sugar estimate" />
               <div className="grid md:grid-cols-3 gap-4 items-start">
                 <div className="md:col-span-2">
                   <div className="flex items-end gap-3">
-                    <div className="text-5xl font-bold">{toUnit(dailyLimit, units.sugar) === Math.round(toUnit(dailyLimit, units.sugar)) ? Math.round(toUnit(dailyLimit, units.sugar)) : (Math.round(toUnit(dailyLimit, units.sugar)*100)/100).toFixed(2)}</div>
-                    <div className="pb-2 text-muted-foreground">{units.sugar} / day</div>
+                    <div className="text-5xl font-bold">{dailyLimit}</div>
+                    <div className="pb-2 text-muted-foreground">g / day</div>
                   </div>
                   <div className="text-xs text-muted-foreground mt-1">
-                    Base {fmtSugar(baseLimit, units.sugar)} + Activity bonus {fmtSugar(cappedBonusToday, units.sugar)} (weekly left {fmtSugar(weeklyRemaining, units.sugar)})
+                    Base {baseLimit} g + Activity bonus {cappedBonusToday} g (weekly left {weeklyRemaining} g)
                   </div>
-                  <div className="mt-3 space-y-2">
-                    {/* Primary progress (consumed vs limit) */}
-                    <ConsumedBar value={todaySugar} max={dailyLimit} />
-                    <div className="flex justify-between text-xs">
-                      <span className="text-sky-600 font-medium">Consumed: {fmtSugar(todaySugar, units.sugar)}</span>
-                      <span className="text-emerald-600 font-medium">Remaining: {fmtSugar(Math.max(0, dailyLimit - todaySugar), units.sugar)}</span>
-                    </div>
-
-                    {/* Excess bar, only if over the limit */}
-                    {overToday > 0 && (
-                      <div>
-                        <div className="w-full h-2.5 bg-rose-100 rounded-full overflow-hidden ring-1 ring-rose-200">
-                          <div
-                            className="h-full bg-rose-500"
-                            style={{ width: `${Math.min(100, Math.round((overToday / dailyLimit) * 100))}%` }}
-                          />
-                        </div>
-                        <div className="text-[11px] text-rose-600 mt-1 font-semibold uppercase tracking-wide">Excess: {fmtSugar(overToday, units.sugar)}</div>
-                      </div>
-                    )}
-
-                    {/* promo line */}
-                    <div className="inline-flex items-center gap-1 text-[12px] text-indigo-700 bg-indigo-50 border border-indigo-200 rounded-md px-2 py-1">
-                      <Sparkles className="w-3.5 h-3.5" />
-                      Keep under your max to start a 5-day streak.
+                  <div className="mt-3">
+                    <ProgressBar value={todaySugar} max={dailyLimit} />
+                    <div className="flex justify-between text-xs mt-1 text-muted-foreground">
+                      <span>Consumed: {todaySugar} g</span>
+                      <span>Remaining: {Math.max(0, dailyLimit - todaySugar)} g</span>
                     </div>
                   </div>
                   {todaySugar >= dailyLimit && (
@@ -411,7 +331,7 @@ export default function App(){
               <SectionTitle icon={Plus} title="Log sugar" subtitle="Add foods & drinks" />
               <div className="grid grid-cols-5 gap-2">
                 <div className="col-span-3"><Input placeholder="e.g., Iced latte" value={newItem} onChange={e=>setNewItem(e.target.value)} /></div>
-                <div className="col-span-1"><Input placeholder={units.sugar === "g" ? "g" : "oz"} value={newSugar} onChange={e=>setNewSugar(e.target.value)} /></div>
+                <div className="col-span-1"><Input placeholder="g" value={newSugar} onChange={e=>setNewSugar(e.target.value)} /></div>
                 <div className="col-span-1"><Button className="w-full" onClick={addLog}>Add</Button></div>
               </div>
               <div className="mt-4 max-h-64 overflow-auto divide-y">
@@ -420,7 +340,7 @@ export default function App(){
                   <div key={l.id} className="flex items-center justify-between py-2">
                     <div>
                       <div className="text-sm font-medium">{l.item}</div>
-                      <div className="text-xs text-muted-foreground">{fmtSugar(l.sugarG, units.sugar)} • {new Date(l.ts).toLocaleTimeString()} • {l.context}</div>
+                      <div className="text-xs text-muted-foreground">{l.sugarG} g • {new Date(l.ts).toLocaleTimeString()} • {l.context}</div>
                     </div>
                     <Button variant="ghost" onClick={()=>setLogs(logs.filter(x=>x.id!==l.id))}>Remove</Button>
                   </div>
@@ -454,7 +374,7 @@ export default function App(){
                 <div className="flex flex-wrap gap-2">
                   {PRESETS.map(p=>(
                     <Button key={p.label} variant="outline" onClick={()=>setQuickAdd(setLogs, p.label, p.grams)}>
-                      {p.label} ({fmtSugar(p.grams, units.sugar)})
+                      {p.label} ({p.grams}g)
                     </Button>
                   ))}
                 </div>
@@ -477,7 +397,7 @@ export default function App(){
                 <Input type="number" min={0} value={activityKcalToday} onChange={e=>setActivityKcalToday(Number(e.target.value||0))} placeholder="e.g., 300" />
               </div>
               <div className="sm:col-span-2 text-sm text-muted-foreground flex items-end">
-                <div>Bonus applied today: <span className="font-medium">{fmtSugar(cappedBonusToday, units.sugar)}</span> (raw {fmtSugar(rawBonusToday, units.sugar)}). Weekly left: <span className="font-medium">{fmtSugar(weeklyRemaining, units.sugar)}</span> (cap {fmtSugar(60, units.sugar)} / 7d).</div>
+                <div>Bonus applied today: <span className="font-medium">{cappedBonusToday} g</span> (raw {rawBonusToday} g). Weekly left: <span className="font-medium">{weeklyRemaining} g</span> (cap 60 g / 7d).</div>
               </div>
             </div>
           </CardContent>
@@ -486,21 +406,15 @@ export default function App(){
         {/* Week View */}
         <Card className="shadow-sm">
           <CardContent className="p-5">
-            <SectionTitle icon={LineChartIcon} title="Week view" subtitle={`Daily sugar vs. your current limit — Week total: ${fmtSugar(weekTotal, units.sugar)} / ${fmtSugar(weekTarget, units.sugar)}`} />
+            <SectionTitle icon={LineChartIcon} title="Week view" subtitle={`Daily sugar vs. your current limit — Week total: ${weekTotal} g / ${weekTarget} g`} />
             <div className="h-64 w-full">
               <ResponsiveContainer width="100%" height="100%">
                 <BarChart data={week} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <XAxis dataKey="day" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} tickFormatter={(v)=>{
-                    const num = Number(v);
-                    return units.sugar === "g" ? `${Math.round(num)}` : `${(Math.round((num/G_PER_OUNCE)*10)/10).toFixed(1)}`;
-                  }} />
-                  <Tooltip cursor={{ opacity: 0.2 }} formatter={(value)=>{
-                    const g = Number(value);
-                    return [fmtSugar(g, units.sugar), `Sugar (${units.sugar})`];
-                  }} />
+                  <YAxis tick={{ fontSize: 12 }} />
+                  <Tooltip cursor={{ opacity: 0.2 }} />
                   <ReferenceLine y={dailyLimit} strokeDasharray="3 3" />
-                  <Bar dataKey="sugar" name={`Sugar (${units.sugar})`}>
+                  <Bar dataKey="sugar" name="Sugar (g)">
                     {week.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={entry.over ? "#ef4444" : "#22c55e"} />
                     ))}
@@ -576,52 +490,14 @@ export default function App(){
                 <div className="text-xs text-muted-foreground">Age</div>
                 <Input type="number" min={5} max={100} value={onboarding.age} onChange={(e)=>setOnboarding({...onboarding, age:Number(e.target.value)})} />
               </label>
-
-              {/* Height units selector */}
-              <label className="col-span-2">
-                <div className="text-xs text-muted-foreground mb-1">Height units</div>
-                <Select value={units.height} onValueChange={(v:any)=>setUnits({...units, height:v})}>
-                  <SelectTrigger><SelectValue placeholder="Units" /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cm">cm</SelectItem>
-                    <SelectItem value="ftin">ft/in</SelectItem>
-                  </SelectContent>
-                </Select>
+              <label>
+                <div className="text-xs text-muted-foreground">Height (cm)</div>
+                <Input type="number" min={100} max={230} value={onboarding.heightCm} onChange={(e)=>setOnboarding({...onboarding, heightCm:Number(e.target.value)})} />
               </label>
-
-              {units.height === "cm" ? (
-                <label className="col-span-2">
-                  <div className="text-xs text-muted-foreground">Height (cm)</div>
-                  <Input type="number" min={100} max={230} value={onboarding.heightCm} onChange={(e)=>setOnboarding({...onboarding, heightCm:Number(e.target.value)})} />
-                </label>
-              ) : (
-                <>
-                  <label>
-                    <div className="text-xs text-muted-foreground">Height (ft)</div>
-                    <Input type="number" min={3} max={8} value={heightFt} onChange={(e)=>{
-                      const ft = Math.max(0, Number(e.target.value||0));
-                      const cm = ftInToCm(ft, heightIn);
-                      setOnboarding({...onboarding, heightCm: cm});
-                    }} />
-                  </label>
-                  <label>
-                    <div className="text-xs text-muted-foreground">Height (in)</div>
-                    <Input type="number" min={0} max={11} value={heightIn} onChange={(e)=>{
-                      let inch = Math.max(0, Number(e.target.value||0));
-                      // constrain to 0..11
-                      if (inch > 11) inch = 11;
-                      const cm = ftInToCm(heightFt, inch);
-                      setOnboarding({...onboarding, heightCm: cm});
-                    }} />
-                  </label>
-                </>
-              )}
-
-              <label className="col-span-2">
+              <label>
                 <div className="text-xs text-muted-foreground">Weight (kg)</div>
                 <Input type="number" min={25} max={250} value={onboarding.weightKg} onChange={(e)=>setOnboarding({...onboarding, weightKg:Number(e.target.value)})} />
               </label>
-
               <label className="col-span-2">
                 <div className="text-xs text-muted-foreground">Activity level</div>
                 <Select value={onboarding.activity} onValueChange={(v:any)=>setOnboarding({...onboarding, activity:v})}>
@@ -646,19 +522,6 @@ export default function App(){
                 <span className="text-xs text-muted-foreground">Enable ethnicity-based adjustment (experimental)</span>
               </div>
             </div>
-
-            {/* Sugar unit selector inside profile too */}
-            <div className="px-5 pb-3">
-              <div className="text-xs text-muted-foreground mb-1">Sugar units</div>
-              <Select value={units.sugar} onValueChange={(v:any)=>setUnits({...units, sugar:v})}>
-                <SelectTrigger><SelectValue placeholder="Units" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="g">grams (g)</SelectItem>
-                  <SelectItem value="oz">ounces (oz)</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
             <div className="p-5 border-t flex justify-end gap-2 bg-slate-50">
               <Button variant="outline" onClick={()=>setShowOnboarding(false)}>Cancel</Button>
               <Button onClick={()=>{ setOnboarding({...onboarding, onboarded:true}); setShowOnboarding(false); }}>Save</Button>
@@ -703,7 +566,7 @@ function parseCsv(text: string){
   const rows = (hasHeader? lines.slice(1): lines);
   const out: { ts:number, item:string, sugarG:number }[] = [];
   for (const line of rows){
-    const cells = line.split(",");
+    const cells = line split(",");
     if (cells.length < 2) continue;
     let dateStr = ""; let item = ""; let sugarStr = "";
     if (cells.length === 2){ item = cells[0]; sugarStr = cells[1] }
